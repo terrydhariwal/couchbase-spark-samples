@@ -67,7 +67,8 @@ public class JavaExample {
 
         // Store A (empty) Document
         couchbaseDocumentRDD(
-            sc.parallelize(Arrays.asList(JsonDocument.create("doc1", JsonObject.empty())))
+            sc.parallelize(Arrays.asList(JsonDocument.create("doc1", JsonObject.empty().
+                    put("name","terry").put("married", true).put("name","terry4"))))
         ).saveToCouchbase();
 
         // Use SparkSQL from Java
