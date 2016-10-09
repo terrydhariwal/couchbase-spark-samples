@@ -22,7 +22,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 import org.apache.spark.SparkConf;
 import org.apache.spark.sql.SQLContext;
 
-object ReadFromMySQL {
+object ReadFromMySQLAndWriteToCouchbase {
 
   val conf = new SparkConf().setMaster("local[*]")
     .setAppName("ReadFromMySQLExample")
