@@ -16,43 +16,12 @@
 import com.couchbase.client.java.document.{JsonArrayDocument, JsonDocument}
 import com.couchbase.client.java.document.json.{JsonArray, JsonObject}
 import com.couchbase.spark._
-import com.couchbase.spark.streaming._
 import org.apache.spark.sql.{DataFrameReader, SQLContext}
 import org.apache.spark.streaming.{Seconds, StreamingContext}
 import org.apache.spark.{SparkConf, SparkContext}
-import com.couchbase.client.java.query.N1qlQuery;
-import com.couchbase.spark.japi.CouchbaseSparkContext;
-import com.couchbase.spark.rdd.CouchbaseQueryRow;
 import org.apache.spark.SparkConf;
-import org.apache.spark.api.java.JavaRDD;
-import org.apache.spark.api.java.JavaSparkContext;
-import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.SQLContext;
-import org.apache.spark.sql.sources.EqualTo;
-import org.apache.spark.sql.Row;
 
-import java.util.Arrays;
-import java.util.List;
-
-import com.couchbase.spark.japi.CouchbaseDataFrameReader.couchbaseReader;
-import com.couchbase.spark.japi.CouchbaseDocumentRDD.couchbaseDocumentRDD;
-import com.couchbase.spark.japi.CouchbaseRDD.couchbaseRDD;
-import com.couchbase.spark.japi.CouchbaseSparkContext.couchbaseContext;
-
-/** A sample Apache Spark program to show how Couchbase may be used with Spark
-  * when doing data transformations.
-  *
-  * Assuming a MySQL Database and documents with this format:
-  *
-  * {
-  *  "givenname": "Matt",
-  *   "surname": "Ingenthron",
-  *   "email": "matt@email.com"
-  * }
-  *
-  * Stream out all documents, look them up in the data loaded from mysql, join on
-  * the email address and add the entitlement token.
-  */
 object ReadFromMySQL {
 
   val conf = new SparkConf().setMaster("local[*]")
@@ -60,25 +29,6 @@ object ReadFromMySQL {
     .set("com.couchbase.bucket.temp", "") // Configure for the Couchbase bucket "transformative" with "password"
 
   val sc = new SparkContext(conf)
-
-  /** Returns a JsonDocument based on a tuple of two strings */
-  def CreateDocument(s: (String, String)): JsonDocument = {
-    JsonDocument.create(s._1, JsonObject.fromJson(s._2))
-  }
-
-  /** Returns an RDD based on email address extraced from the document */
-  def CreateMappableRdd(s: (String, String)): (String, JsonDocument) = {
-    val return_doc = JsonDocument.create(s._1, JsonObject.fromJson(s._2))
-    (return_doc.content().getString("email"), return_doc)
-  }
-
-  /** Returns a JsonDocument enriched with the entitlement token */
-  def mergeIntoDoc(t: (String, (JsonDocument, Integer))): JsonDocument = {
-    val jsonToEnrich = t._2._1.content()
-    val entitlementFromJoin = t._2._2
-    jsonToEnrich.put("entitlementtoken", entitlementFromJoin)
-    t._2._1
-  }
 
   def getMysqlReader(sqlctx: SQLContext): DataFrameReader = {
 
@@ -110,8 +60,6 @@ object ReadFromMySQL {
     // Note, appending .cache() may make sense here (or not) depending on amount of data.
     val entitlements_dataFrame = mysqlReader.load()
 
-
-
     /* loading this:
       +---------+-----------+-----------------+----------------+
       |givenname|    surname|            email|entitlementtoken|
@@ -139,8 +87,13 @@ object ReadFromMySQL {
     println(row)
 
     val rowsList = entitlements_dataFrame.sqlContext.sql("select * from names").collect
-    rowsList.map( row => println("Map " + row))
-    rowsList.map( row => {
+
+    rowsList.foreach(row => println("FOREACH, displaying " + row + " on " + Thread.currentThread().getName))
+
+    rowsList.foreach(row => {
+
+      println("FOREACH, writing row to Couchbase " + row + " on " + Thread.currentThread().getName)
+
       val doc = JsonDocument.create(row.fieldIndex("email").toString,
         JsonObject.empty()
           .put("givenname", row.getAs("givenname").toString)
@@ -149,59 +102,54 @@ object ReadFromMySQL {
           .put("entitlementtoken", row.getAs("entitlementtoken").asInstanceOf[Int]))
 
       val data = sc
+        //.parallelize(Seq(doc, doc2)) //this could be a list of documents to save as apposed to one!
         .parallelize(Seq(doc))
         .saveToCouchbase()
-      }
+    })
 
-    )
+    //Map equivalent to foreach
+/*    rowsList.map( row => println("MAP, displaying " + row + " on " + Thread.currentThread().getName))
 
+    rowsList.map( row => {
 
+      println("MAP, writing row to Couchbase " + row + " on " + Thread.currentThread().getName)
 
-//    entitlements_dataFrame.sqlContext.sql("select * from names").collect.map(
-//      row =>
-//        sc
-//          .couchbaseGet[JsonDocument](Seq("airline_10123", "airline_10748"))
-//          .map(oldDoc => {
-//            val id = "my_" + oldDoc.id()
-//            val content = JsonObject.create().put("name", oldDoc.content().getString("name"))
-//            JsonDocument.create(id, content)
-//          })
-//          .saveToCouchbase()
-//    )
+      val doc = JsonDocument.create(row.fieldIndex("email").toString,
+        JsonObject.empty()
+          .put("givenname", row.getAs("givenname").toString)
+          .put("surname", row.getAs("surname").toString)
+          .put("email", row.getAs("email").toString)
+          .put("entitlementtoken", row.getAs("entitlementtoken").asInstanceOf[Int]))
 
-//                  parallelize(Arrays.asList(JsonDocument.create("doc1", JsonObject.empty().
-//                  put("name","terry").put("married", true).put("name","terry4"))))
-//              ).saveToCouchbase()
-//    )
+      val data = sc
+        //.parallelize(Seq(doc, doc2)) //this could be a list of documents to save as apposed to one!
+        .parallelize(Seq(doc))
+        .saveToCouchbase()
+    })
+*/
 
-
-    //entitlements_dataFrame.sqlContext.sql("select * from names").collect.foreach(
-    //      couchbaseDocumentRDD(
-//        sc.parallelize(Arrays.asList(JsonDocument.create("doc1", JsonObject.empty().
-//          put("name","terry").put("married", true).put("name","terry4"))))
-//      ).saveToCouchbase())
-
-    val entitlementsSansSchema = entitlements_dataFrame.rdd.map[(String, Integer)](f => (f.getAs[String]("email"), f.getAs[Integer]("entitlementtoken")))
-
-    val ssc = new StreamingContext(sc, Seconds(5))
+    //run as RDD - which will parallelize processing across threads :-D
+    val rowsListRDD = sc.parallelize(rowsList)
+    rowsListRDD.foreach(rowRDD => println("FOREACH, displaying " + rowRDD + " on " + Thread.currentThread().getName))
 
 
-//
-//    ssc.couchbaseStream("transformative")
-//      .filter(_.isInstanceOf[Mutation])
-//      .map(m => (new String(m.asInstanceOf[Mutation].key), new String(m.asInstanceOf[Mutation].content)))
-//      .map(s => CreateMappableRdd(s))
-//      .filter(_._2.content().get("entitlementtoken").eq(null))
-//      .foreachRDD(rdd => {
-//        rdd
-//          .join(entitlementsSansSchema)
-//          .map(mergeIntoDoc)
-//          //.foreach(println) // a good place to see the effect
-//          .saveToCouchbase("transformative")
-//      })
-//
-//    ssc.start()
-//    ssc.awaitTermination()
+    rowsListRDD.foreach(rowRDD => {
+
+      println("FOREACH, writing rowRDD to Couchbase " + rowRDD + " on " + Thread.currentThread().getName)
+
+      val doc = JsonDocument.create(rowRDD.fieldIndex("email").toString,
+        JsonObject.empty()
+          .put("givenname", rowRDD.getAs("givenname").toString)
+          .put("surname", rowRDD.getAs("surname").toString)
+          .put("email", rowRDD.getAs("email").toString)
+          .put("entitlementtoken", rowRDD.getAs("entitlementtoken").asInstanceOf[Int]))
+
+      val data = sc
+        //.parallelize(Seq(doc, doc2)) //this could be a list of documents to save as apposed to one!
+        .parallelize(Seq(doc))
+        .saveToCouchbase()
+    })
+
   }
 
 }
