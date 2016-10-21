@@ -1,8 +1,8 @@
-import com.couchbase.client.java.document.json.{JsonArray, JsonObject}
-import com.couchbase.client.java.document.{JsonArrayDocument, JsonDocument}
 import com.couchbase.spark._
+import com.couchbase.client.java.document._
+import com.couchbase.client.java.document.json.JsonObject
 import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.sql.{DataFrameReader, SQLContext};
+import org.apache.spark.sql._
 
 object ReadFromCSVAndWriteToCouchbase {
 
@@ -10,7 +10,7 @@ object ReadFromCSVAndWriteToCouchbase {
     .set("spark.driver.allowMultipleContexts", "true")
     .setMaster("local[*]")
     .setAppName("csvExample")
-    .set("com.couchbase.bucket.temp", "") 
+    .set("com.couchbase.bucket.temp", "")
 
   val sc = new SparkContext(conf)
 
@@ -33,25 +33,19 @@ object ReadFromCSVAndWriteToCouchbase {
     val tableSchema = df.schema
     val rowsListRDD = sc.parallelize(rowsList)
 
-   rowsList.foreach(row => {
+    val docArray = rowsListRDD.map(row => {JsonDocument.create(row.getAs("email").toString, JsonObject.empty()
+      .put("givenname", row.getAs("givenname").toString)
+      .put("surname", row.getAs("surname").toString)
+      .put("email", row.getAs("email").toString)
+      .put("entitlementtoken", row.getAs("entitlementtoken").asInstanceOf[Int]))
+    }).collect()
 
-     //println("FOREACH, writing row to Couchbase " + row + " on " + Thread.currentThread().getName)
-
-     val doc = JsonDocument.create(row.getAs("email").toString,
-       JsonObject.empty()
-         .put("givenname", row.getAs("givenname").toString)
-         .put("surname", row.getAs("surname").toString)
-         .put("email", row.getAs("email").toString)
-         .put("entitlementtoken", row.getAs("entitlementtoken").asInstanceOf[Int]))
-
-     val data = sc
-       //.parallelize(Seq(doc, doc2)) //this could be a list of documents to save as apposed to one!
-       .parallelize(Seq(doc))
-       .saveToCouchbase()
-   })
+    val data = sc.parallelize(docArray)
+      .saveToCouchbase()
 
   }
 
 }
+
 
 

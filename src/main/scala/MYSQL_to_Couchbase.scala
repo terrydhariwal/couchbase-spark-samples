@@ -76,37 +76,88 @@ object MYSQL_to_Couchbase {
     //    })
 
 
+//    val rowsListRDD = sc.parallelize(rowsList)
+//    rowsListRDD.foreach(rowRDD => {
+//      println("TERRY - FOREACH, writing rowRDD to Couchbase " + rowRDD + " on " + Thread.currentThread().getName)
+//
+//      val jsonObject = JsonObject.empty()
+//
+//      //simple table schema cannot support objects
+//      tableSchema.foreach(i => jsonObject.put(i.name,
+//        if (rowRDD.getAs(i.name) != null) {
+//          //rowRDD.getAs(i.name).toString
+//          if(i.dataType == org.apache.spark.sql.types.DataTypes.StringType)
+//            rowRDD.getAs(i.name).toString
+//          else if(i.dataType == org.apache.spark.sql.types.DataTypes.IntegerType)
+//            rowRDD.getAs(i.name).asInstanceOf[Int]
+//          else if(i.dataType == org.apache.spark.sql.types.DataTypes.BooleanType)
+//            rowRDD.getAs(i.name).asInstanceOf[Boolean]
+//          else
+//            rowRDD.getAs(i.name).toString //need a default
+//        }
+//        else
+//          "NULL"
+//      ))
+//
+//      println(jsonObject)
+//
+//      val doc = JsonDocument.create(rowRDD.getAs("email").toString, jsonObject)
+//
+//      val data = sc
+//        .parallelize(Seq(doc))
+//        .saveToCouchbase()
+//    })
+
+
     val rowsListRDD = sc.parallelize(rowsList)
-    rowsListRDD.foreach(rowRDD => {
-      println("TERRY - FOREACH, writing rowRDD to Couchbase " + rowRDD + " on " + Thread.currentThread().getName)
+
+
+    //    rowsListRDD.foreach(rowRDD => {
+    //      println("TERRY - FOREACH, writing rowRDD to Couchbase " + rowRDD + " on " + Thread.currentThread().getName)
+    //
+    //      val jsonObject = JsonObject.empty()
+    //
+    //      //simple table schema cannot support objects
+    //      tableSchema.foreach(i => jsonObject.put(i.name,
+    //        if (rowRDD.getAs(i.name) != null) {
+    //          //rowRDD.getAs(i.name).toString
+    //          if(i.dataType == org.apache.spark.sql.types.DataTypes.StringType)
+    //            rowRDD.getAs(i.name).toString
+    //          else if(i.dataType == org.apache.spark.sql.types.DataTypes.IntegerType)
+    //            rowRDD.getAs(i.name).asInstanceOf[Int]
+    //          else if(i.dataType == org.apache.spark.sql.types.DataTypes.BooleanType)
+    //            rowRDD.getAs(i.name).asInstanceOf[Boolean]
+    //          else
+    //            rowRDD.getAs(i.name).toString //need a default
+    //        }
+    //        else
+    //          "NULL"
+    //      ))
+
+    val docArray = rowsListRDD.map(row => {
 
       val jsonObject = JsonObject.empty()
 
       //simple table schema cannot support objects
       tableSchema.foreach(i => jsonObject.put(i.name,
-        if (rowRDD.getAs(i.name) != null) {
-          //rowRDD.getAs(i.name).toString
-          if(i.dataType == org.apache.spark.sql.types.DataTypes.StringType)
-            rowRDD.getAs(i.name).toString
-          else if(i.dataType == org.apache.spark.sql.types.DataTypes.IntegerType)
-            rowRDD.getAs(i.name).asInstanceOf[Int]
-          else if(i.dataType == org.apache.spark.sql.types.DataTypes.BooleanType)
-            rowRDD.getAs(i.name).asInstanceOf[Boolean]
-          else
-            rowRDD.getAs(i.name).toString //need a default
-        }
-        else
-          "NULL"
-      ))
+              if (row.getAs(i.name) != null) {
+                //rowRDD.getAs(i.name).toString
+                if(i.dataType == org.apache.spark.sql.types.DataTypes.StringType)
+                  row.getAs(i.name).toString
+                else if(i.dataType == org.apache.spark.sql.types.DataTypes.IntegerType)
+                  row.getAs(i.name).asInstanceOf[Int]
+                else if(i.dataType == org.apache.spark.sql.types.DataTypes.BooleanType)
+                  row.getAs(i.name).asInstanceOf[Boolean]
+                else
+                  row.getAs(i.name).toString //need a default
+              }
+              else
+                "NULL"))
+      JsonDocument.create(row.getAs("email").toString, jsonObject)
+    }).collect()
 
-      println(jsonObject)
-
-      val doc = JsonDocument.create(rowRDD.getAs("email").toString, jsonObject)
-
-      val data = sc
-        .parallelize(Seq(doc))
-        .saveToCouchbase()
-    })
+    val data = sc.parallelize(docArray)
+      .saveToCouchbase()
 
   }
 }
